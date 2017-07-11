@@ -68,7 +68,7 @@ public class Experiment {
 		//Selected algorithms
 		learners.add(new ClassifierTest(new RCD(), "RCD"));
 		learners.add(new ClassifierTest(new WeightedMajorityAlgorithm(), "DWM"));
-		learners.add(new ClassifierTest(learnerEWMA, "EWMA"));
+		learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
 		learners.add(new ClassifierTest(learnerDDM, "DDM"));
 		learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
 		learners.add(new ClassifierTest(new OnlineAccuracyUpdatedEnsemble(), "OAUE"));
@@ -132,8 +132,8 @@ public class Experiment {
 		
 		//Prepare Datasets
 		ArrayList<String> namesDataSet = new ArrayList<>();
-		namesDataSet.add("data/iris.arff");
-		namesDataSet.add("data/DriftSets/sea.arff");
+		//namesDataSet.add("data/iris.arff");
+		namesDataSet.add("data/DriftSets/weather.arff");
 		
 		for(String name : namesDataSet)
 		{			
