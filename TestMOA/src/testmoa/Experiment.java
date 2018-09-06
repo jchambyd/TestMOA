@@ -5,158 +5,298 @@
  */
 package testmoa;
 
-import moa.core.TimingUtils;
-import com.yahoo.labs.samoa.instances.Instance;
 import com.yahoo.labs.samoa.instances.ArffLoader;
+import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.DecimalFormat;
+import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Locale;
 import moa.classifiers.meta.*;
 import moa.classifiers.core.driftdetection.*;
 import moa.classifiers.drift.SingleClassifierDrift;
+import moa.evaluation.preview.LearningCurve;
 import moa.streams.ArffFileStream;
+import moa.tasks.EvaluatePrequentialCV;
 
 public class Experiment {
 
-    public Experiment(){
+    public Experiment()
+    {
     }
 
-	public static ArffFileStream getArffDataset(String nameFile) throws FileNotFoundException
-	{
-		ArffLoader loader = new ArffLoader(new FileReader(nameFile));
-		ArffFileStream stream = new ArffFileStream(nameFile, loader.getStructure().numAttributes());				
-		return stream;
-	}
-	
-	
-	public ArrayList<ClassifierTest> getResult(String name, int numChunks) throws FileNotFoundException
-	{
-		int numInstances, lengthChunk;
-		long evaluateStartTime;
-		Instance trainInst;
-		//Classifiers
-		SingleClassifierDrift learnerEWMA = new SingleClassifierDrift();
-		SingleClassifierDrift learnerDDM = new SingleClassifierDrift();
-		SingleClassifierDrift learnerEDDM = new SingleClassifierDrift();
-		learnerEWMA.driftDetectionMethodOption.setCurrentObject(new EWMAChartDM());
-		learnerDDM.driftDetectionMethodOption.setCurrentObject(new DDM());
-		learnerEDDM.driftDetectionMethodOption.setCurrentObject(new EDDM());
-		
-		//Load Dataset
-		ArffFileStream stream = getArffDataset(name);
-		stream.prepareForUse();
-		numInstances = 0;
-		//Counting # of instances in the Dataset
-		while(stream.hasMoreInstances())
-		{
-			stream.nextInstance();
-			numInstances++;
-		}
-		stream.restart();
-
-		//Calculate length for each chunck
-		lengthChunk = numInstances / numChunks;
-		
-		//Adjust for use all instances
-		/*if( numInstances > (lengthChunk * numChunks))
-			lengthChunk++;*/
-
-		ArrayList<ClassifierTest> learners = new ArrayList<>();
-		//Selected algorithms
-		learners.add(new ClassifierTest(new RCD(), "RCD"));
-		learners.add(new ClassifierTest(new WeightedMajorityAlgorithm(), "DWM"));
-		learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
-		learners.add(new ClassifierTest(learnerDDM, "DDM"));
-		learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
-		learners.add(new ClassifierTest(new OnlineAccuracyUpdatedEnsemble(), "OAUE"));
-		//learners.add(new ClassifierTest(new DoF(), "DoF"));
-		
-		//Prepare Learners
-		for(int i = 0; i < learners.size(); i++)
-		{
-			//learners.get(i).learner.getOptions().setViaCLIString("-k 4"); 
-			learners.get(i).learner.setModelContext(stream.getHeader());
-			learners.get(i).learner.prepareForUse();
-		}
-
-		int numberSamples = 0;
-
-		for(int i = 0; i < numChunks; i++)
-		{
-			//Evaluate and train instances by chunck
-			for(int j = 0; j < lengthChunk && numberSamples < numInstances; j++)
-			{
-				trainInst = stream.nextInstance().instance;
-
-				for(int k = 0; k < learners.size(); k++)
-				{
-					evaluateStartTime = TimingUtils.getNanoCPUTimeOfCurrentThread();
-
-					if (learners.get(k).learner.correctlyClassifies(trainInst))
-						learners.get(k).numCorrect++;
-					else
-						learners.get(k).numIncorrect++;
-
-					learners.get(k).learner.trainOnInstance(trainInst);				
-					learners.get(k).time += TimingUtils.nanoTimeToSeconds(TimingUtils.getNanoCPUTimeOfCurrentThread()- evaluateStartTime);				
-				}
-				numberSamples++;
-			}
-			//Register results by chunck	
-			for(int k = 0; k < learners.size(); k++)
-			{
-				learners.get(k).accuracies.add(learners.get(k).mxCalculateAccuracy());
-				learners.get(k).times.add(learners.get(k).time);
-				//Reset values
-				learners.get(k).time = 0;
-				learners.get(k).numCorrect = 0;
-				learners.get(k).numIncorrect = 0;				
-			}
-		}
-
-		for(int k = 0; k < learners.size(); k++)
-		{
-			learners.get(k).mxCalculateValues();
-		}	
-		
-		return learners;
-	}	
-	
-    public void run()throws IOException
+    public static ArffFileStream getArffDataset(String nameFile) throws FileNotFoundException
     {
-		//Output File
-		PrintWriter outFile = new PrintWriter(new FileWriter("data.txt", false));
-		
-		//Prepare Datasets
-		ArrayList<String> namesDataSet = new ArrayList<>();
-		//namesDataSet.add("data/iris.arff");
-		namesDataSet.add("data/DriftSets/weather.arff");
-		
-		for(String name : namesDataSet)
-		{			
-			ArrayList<ClassifierTest> learners = getResult(name, 40);
-			
-			outFile.println("DATASET: " + name);
-			outFile.printf("%12s%12s%12s%11s%11s\n", "Classifier", "Accuracy", "SD-Accu.", "Time", "SD-Time");
-			outFile.println("----------------------------------------------------------");
-			for(int i = 0; i < learners.size(); i++)
-			{
-				outFile.printf("%12s %11.2f% 11.2f %11.6f% 11.6f\n", learners.get(i).name, 
-																	 learners.get(i).accuracy, 
-																	 learners.get(i).sd_accuracy, 
-																	 learners.get(i).mean_time, 
-																	 learners.get(i).sd_time);
-			}
-		}
-        outFile.close();
+        ArffLoader loader = new ArffLoader(new FileReader(nameFile));
+        ArffFileStream stream = new ArffFileStream(nameFile, loader.getStructure().numAttributes());
+        return stream;
     }
 
-    public static void main(String[] args)throws IOException
+    public ArrayList<ClassifierTest> startProcessStream(String pathStream, int frequency, boolean save) throws FileNotFoundException
     {
-        Experiment exp = new Experiment();		
-        exp.run();
+        //Classifiers
+        SingleClassifierDrift learnerEWMA = new SingleClassifierDrift();
+        SingleClassifierDrift learnerDDM = new SingleClassifierDrift();
+        SingleClassifierDrift learnerEDDM = new SingleClassifierDrift();
+        learnerEWMA.driftDetectionMethodOption.setCurrentObject(new EWMAChartDM());
+        learnerDDM.driftDetectionMethodOption.setCurrentObject(new DDM());
+        learnerEDDM.driftDetectionMethodOption.setCurrentObject(new EDDM());
+
+        //Load Dataset
+        ArffFileStream stream = getArffDataset(pathStream);
+
+        ArrayList<ClassifierTest> learners = new ArrayList<>();
+        //Selected algorithms
+        //learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
+        //learners.add(new ClassifierTest(learnerDDM, "DDM"));
+        //learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
+        learners.add(new ClassifierTest(new AdaptiveRandomForest(), "ARF"));
+        //learners.add(new ClassifierTest(new DynamicWeightedMajority(), "DWM"));
+
+        //Prepare Learners
+        for (int i = 0; i < learners.size(); i++) {
+            learners.get(i).learner.setModelContext(stream.getHeader());
+            learners.get(i).learner.prepareForUse();
+        }
+
+        for (int i = 0; i < learners.size(); i++) {
+            String filename = prepareFileName(learners.get(i).name, pathStream);
+            // Prepare stream
+            stream.prepareForUse();
+            stream.restart();
+            // Runs the experiment
+            EvaluatePrequentialCV prequentialCV = new EvaluatePrequentialCV();
+            prequentialCV.prepareForUse();
+            prequentialCV.instanceLimitOption.setValue(100000);
+            prequentialCV.sampleFrequencyOption.setValue(frequency);
+            prequentialCV.dumpFileOption.setValue("./results/" + filename);
+            prequentialCV.streamOption.setCurrentObject(stream);
+            prequentialCV.learnerOption.setCurrentObject(learners.get(i).learner);
+            LearningCurve lc = (LearningCurve) prequentialCV.doTask();
+            // Extract information
+            getValuesForExperiment(learners.get(i), lc);
+        }
+
+        if (save) {
+            saveFile(learners, pathStream);
+        }        
+        
+        return learners;
+    }
+
+    public void run(boolean save) throws IOException
+    {
+        // Prepares the folder that will contain all the results
+        prepareFolder();
+        //Output File
+        //PrintWriter outFile = new PrintWriter(new FileWriter("data.txt", save));
+
+        //Prepare Datasets
+        ArrayList<String> namesDataSet = new ArrayList<>();
+        namesDataSet.add("data/DriftSets/elecNormNew.arff");
+        namesDataSet.add("data/DriftSets/sea.arff");
+        namesDataSet.add("data/DriftSets/weather.arff");
+
+        for (String name : namesDataSet) {
+            ArrayList<ClassifierTest> learners = startProcessStream(name, 1000, true);
+
+            System.out.println("DATASET: " + name);
+            System.out.printf("%12s%12s%12s%12s%12s%12s%16s\n", "Classifier", "Accuracy", "SD-Accu.", "Kappa M", "kappa T", "Time", "RAM-Hours");
+            System.out.println("----------------------------------------------------------------------------------------");
+            for (int i = 0; i < learners.size(); i++) {
+                System.out.printf("%12s %11.2f %11.2f %11.2f %11.2f %11.2f %15.9f\n", learners.get(i).name,
+                    learners.get(i).accuracy,
+                    learners.get(i).sd_accuracy,
+                    learners.get(i).kappam,
+                    learners.get(i).kappat,
+                    learners.get(i).time,
+                    learners.get(i).ram * Math.pow(10, 9));
+            }
+        }
+        System.out.close();
+    }
+
+    private static void prepareFolder()
+    {
+        File folder = new File("./results/");
+        File listOfFiles[];
+        if (folder.exists()) {
+            listOfFiles = folder.listFiles();
+            for (File listOfFile : listOfFiles) {
+                if (listOfFile.isFile()) {
+                    if (listOfFile.getName().endsWith(".csv")) {
+                        listOfFile.delete();
+                    }
+                }
+            }
+        } else {
+            folder.mkdir();
+        }
+    }
+
+    private static String prepareFileName(String strClassifier, String strStream)
+    {
+        Path p = Paths.get(strStream);
+        
+        String filename = p.getFileName() + "_" + strClassifier + ".csv";
+        filename = filename.trim();
+        filename = filename.replace("-", "_").replace(" ", "_");
+        return filename;
+    }
+
+    public void saveFile(ArrayList<ClassifierTest> learners, String name)
+    {
+        File file = new File("results/data.txt");
+        NumberFormat df = NumberFormat.getCurrencyInstance(Locale.US);
+        ((DecimalFormat) df).applyPattern("0.00");
+        Path p = Paths.get(name);
+        name = p.getFileName().toString();
+        name = name.substring(0, name.lastIndexOf('.'));
+        
+        int numChunks = learners.get(0).accuracies.size();
+        //Print chunck results
+        try (PrintWriter pw = new PrintWriter(new BufferedWriter(new FileWriter(file, true)))) {
+            
+            // Printing accuracy
+            
+            pw.printf("DataSet: %s - Accuracy\n", name);
+            pw.printf("%8s,", "Instance");
+            int j = 0;
+            for (; j < learners.size() - 1; j++) {
+                pw.printf("%8s,", learners.get(j).name);
+            }
+            pw.printf("%8s\n", learners.get(j).name);
+
+            for (int i = 0; i < numChunks; i++) {
+                pw.printf("%8s,", "" + learners.get(j).instances.get(i));
+                for (j = 0; j < learners.size() - 1; j++) {
+                    pw.printf("%8s,", df.format(learners.get(j).accuracies.get(i)));
+                }
+                pw.printf("%8s\n", df.format(learners.get(j).accuracies.get(i)));
+            }
+            
+            // Printing Kappa M
+            
+            pw.printf("DataSet: %s - Kappa M\n", name);
+            pw.printf("%8s,", "Instances");
+            j = 0;
+            for (; j < learners.size() - 1; j++) {
+                pw.printf("%8s,", learners.get(j).name);
+            }
+            pw.printf("%8s\n", learners.get(j).name);
+
+            for (int i = 0; i < numChunks; i++) {
+                pw.printf("%8s,", "" + learners.get(j).instances.get(i));
+                for (j = 0; j < learners.size() - 1; j++) {
+                    pw.printf("%8s,", df.format(learners.get(j).kappams.get(i)));
+                }
+                pw.printf("%8s\n", df.format(learners.get(j).kappams.get(i)));
+            }
+            
+            // Printing Kappa T
+            
+            pw.printf("DataSet: %s - Kappa T\n", name);
+            pw.printf("%8s,", "Instances");
+            j = 0;
+            for (; j < learners.size() - 1; j++) {
+                pw.printf("%8s,", learners.get(j).name);
+            }
+            pw.printf("%8s\n", learners.get(j).name);
+
+            for (int i = 0; i < numChunks; i++) {
+                pw.printf("%8s,", "" + learners.get(j).instances.get(i));
+                for (j = 0; j < learners.size() - 1; j++) {
+                    pw.printf("%8s,", df.format(learners.get(j).kappats.get(i)));
+                }
+                pw.printf("%8s\n", df.format(learners.get(j).kappats.get(i)));
+            }
+            
+            // Printing Average Results
+            
+            PrintWriter pwAcc = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/accuracy.txt"), true)));            
+            PrintWriter pwKam = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/kappam.txt"), true)));
+            PrintWriter pwKat = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/kappat.txt"), true)));
+            
+            pwAcc.printf("%15s", name);
+            for (j = 0; j < learners.size() - 1; j++) {
+                pwAcc.printf("%8s,", df.format(learners.get(j).accuracy));
+            }
+            pwAcc.printf("%8s\n", df.format(learners.get(j).accuracy));
+            
+            pwKam.printf("%12s", name);
+            for (j = 0; j < learners.size() - 1; j++) {
+                pwKam.printf("%8s,", df.format(learners.get(j).kappam));
+            }
+            pwKam.printf("%8s\n", df.format(learners.get(j).kappam));
+            
+            pwKat.printf("%12s", name);
+            for (j = 0; j < learners.size() - 1; j++) {
+                pwKat.printf("%8s,", df.format(learners.get(j).kappat));
+            }
+            pwKat.printf("%8s\n", df.format(learners.get(j).kappat));
+            
+            pwAcc.close();
+            pwKam.close();
+            pwKat.close();
+            
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+    
+    private void getValuesForExperiment(ClassifierTest classifier, LearningCurve lc)
+    {
+        int indexAcc = -1;
+        int indexKappam = -1;
+        int indexKappat = -1;
+        int indexCpuTime = -1;
+        int indexRamHours = -1;
+        int indexInstances = -1;
+
+        int index = 0;
+        for (String s : lc.headerToString().split(",")) {
+            if (s.contains("[avg] classifications correct")) {
+                indexAcc = index;
+            } else if (s.contains("time")) {
+                indexCpuTime = index;
+            } else if (s.contains("RAM-Hours")) {
+                indexRamHours = index;
+            } else if (s.contains("[avg] Kappa M")) {
+                indexKappam = index;
+            } else if (s.contains("[avg] Kappa Temporal")) {
+                indexKappat = index;
+            } else if (s.contains("learning evaluation instances")) {
+                indexInstances = index;
+            }
+            index++;
+        }
+
+        // Reading all values
+        for (int entry = 0; entry < lc.numEntries(); entry++) {
+
+            classifier.accuracies.add(lc.getMeasurement(entry, indexAcc));
+            classifier.kappams.add(lc.getMeasurement(entry, indexKappam));
+            classifier.kappats.add(lc.getMeasurement(entry, indexKappat));
+            classifier.instances.add(lc.getMeasurement(entry, indexInstances));
+        }
+        // Calculating statistical values        
+        classifier.mxCalculateValues();
+        // but both cpu time and ram hours are only the final values obtained
+        // since they represent the processing of the entire stream
+        classifier.time = lc.getMeasurement(lc.numEntries() - 1, indexCpuTime);
+        classifier.ram = lc.getMeasurement(lc.numEntries() - 1, indexRamHours);
+    }
+    
+    public static void main(String[] args) throws IOException
+    {
+        Experiment exp = new Experiment();
+        exp.run(false);
     }
 }

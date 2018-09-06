@@ -1,0 +1,9 @@
+ elecNormNew    2.15,  -17.84,  -13.53
+         sea   67.68,   70.88,   70.87
+     weather   14.49,    8.51,   14.32
+ elecNormNew    2.15,  -17.84,  -13.53
+         sea   67.68,   70.88,   70.87
+     weather   14.49,    8.51,   14.32
+ elecNormNew   14.21
+         sea   73.21
+     weather   31.94
