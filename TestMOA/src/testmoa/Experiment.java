@@ -39,6 +39,17 @@ public class Experiment {
         return stream;
     }
 
+	private ArrayList<String> mxGetDataSets()
+	{
+		ArrayList<String> namesDataSet = new ArrayList<>();
+		
+		namesDataSet.add("data/DriftSets/elecNormNew.arff");
+        namesDataSet.add("data/DriftSets/sea.arff");
+        namesDataSet.add("data/DriftSets/weather.arff");
+		
+		return namesDataSet;
+	}
+	
     public ArrayList<ClassifierTest> startProcessStream(String pathStream, int frequency, boolean save) throws FileNotFoundException
     {
         //Classifiers
@@ -54,11 +65,10 @@ public class Experiment {
 
         ArrayList<ClassifierTest> learners = new ArrayList<>();
         //Selected algorithms
-        //learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
-        //learners.add(new ClassifierTest(learnerDDM, "DDM"));
-        //learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
+        learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
+        learners.add(new ClassifierTest(learnerDDM, "DDM"));
+        learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
         learners.add(new ClassifierTest(new AdaptiveRandomForest(), "ARF"));
-        //learners.add(new ClassifierTest(new DynamicWeightedMajority(), "DWM"));
 
         //Prepare Learners
         for (int i = 0; i < learners.size(); i++) {
@@ -67,7 +77,7 @@ public class Experiment {
         }
 
         for (int i = 0; i < learners.size(); i++) {
-            String filename = prepareFileName(learners.get(i).name, pathStream);
+            String filename = this.prepareFileName(learners.get(i).name, pathStream);
             // Prepare stream
             stream.prepareForUse();
             stream.restart();
@@ -81,7 +91,7 @@ public class Experiment {
             prequentialCV.learnerOption.setCurrentObject(learners.get(i).learner);
             LearningCurve lc = (LearningCurve) prequentialCV.doTask();
             // Extract information
-            getValuesForExperiment(learners.get(i), lc);
+            this.getValuesForExperiment(learners.get(i), lc);
         }
 
         if (save) {
@@ -94,18 +104,15 @@ public class Experiment {
     public void run(boolean save) throws IOException
     {
         // Prepares the folder that will contain all the results
-        prepareFolder();
+        this.prepareFolder();
         //Output File
         //PrintWriter outFile = new PrintWriter(new FileWriter("data.txt", save));
 
         //Prepare Datasets
-        ArrayList<String> namesDataSet = new ArrayList<>();
-        namesDataSet.add("data/DriftSets/elecNormNew.arff");
-        namesDataSet.add("data/DriftSets/sea.arff");
-        namesDataSet.add("data/DriftSets/weather.arff");
-
+        ArrayList<String> namesDataSet = this.mxGetDataSets();
+		
         for (String name : namesDataSet) {
-            ArrayList<ClassifierTest> learners = startProcessStream(name, 1000, true);
+            ArrayList<ClassifierTest> learners = this.startProcessStream(name, 1000, true);
 
             System.out.println("DATASET: " + name);
             System.out.printf("%12s%12s%12s%12s%12s%12s%16s\n", "Classifier", "Accuracy", "SD-Accu.", "Kappa M", "kappa T", "Time", "RAM-Hours");
@@ -131,9 +138,22 @@ public class Experiment {
             listOfFiles = folder.listFiles();
             for (File listOfFile : listOfFiles) {
                 if (listOfFile.isFile()) {
-                    if (listOfFile.getName().endsWith(".csv")) {
+                    //if (listOfFile.getName().endsWith(".csv")) {
                         listOfFile.delete();
-                    }
+                    //}
+                }
+            }
+        } else {
+            folder.mkdir();
+        }
+		folder = new File("/results/");
+        if (folder.exists()) {
+            listOfFiles = folder.listFiles();
+            for (File listOfFile : listOfFiles) {
+                if (listOfFile.isFile()) {
+                    //if (listOfFile.getName().endsWith(".csv")) {
+                        listOfFile.delete();
+                    //}
                 }
             }
         } else {
@@ -223,6 +243,7 @@ public class Experiment {
             PrintWriter pwAcc = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/accuracy.txt"), true)));            
             PrintWriter pwKam = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/kappam.txt"), true)));
             PrintWriter pwKat = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/kappat.txt"), true)));
+			PrintWriter pwTim = new PrintWriter(new BufferedWriter(new FileWriter(new File("results/time.txt"), true)));
             
             pwAcc.printf("%15s", name);
             for (j = 0; j < learners.size() - 1; j++) {
@@ -241,10 +262,17 @@ public class Experiment {
                 pwKat.printf("%8s,", df.format(learners.get(j).kappat));
             }
             pwKat.printf("%8s\n", df.format(learners.get(j).kappat));
+			
+			pwTim.printf("%12s", name);
+            for (j = 0; j < learners.size() - 1; j++) {
+                pwTim.printf("%8s,", df.format(learners.get(j).time));
+            }
+            pwTim.printf("%8s\n", df.format(learners.get(j).time));
             
             pwAcc.close();
             pwKam.close();
             pwKat.close();
+			pwTim.close();
             
         } catch (IOException ex) {
             ex.printStackTrace();
