@@ -18,6 +18,7 @@ import java.nio.file.Paths;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Locale;
 import moa.classifiers.meta.*;
 import moa.classifiers.core.driftdetection.*;
@@ -43,7 +44,6 @@ public class Experiment {
     {
         ArrayList<String> namesDataSet = new ArrayList<>();
 
-        namesDataSet.add("data/DriftSets/elecNormNew.arff");
         namesDataSet.add("data/DriftSets/sea.arff");
         namesDataSet.add("data/DriftSets/weather.arff");
 
@@ -68,8 +68,7 @@ public class Experiment {
         learners.add(new ClassifierTest(learnerEWMA, "ECDD"));
         learners.add(new ClassifierTest(learnerDDM, "DDM"));
         learners.add(new ClassifierTest(learnerEDDM, "EDDM"));
-        learners.add(new ClassifierTest(new AdaptiveRandomForest(), "ARF"));
-
+        
         //Prepare Learners
         for (int i = 0; i < learners.size(); i++) {
             learners.get(i).learner.setModelContext(stream.getHeader());
@@ -110,9 +109,11 @@ public class Experiment {
 
         //Prepare Datasets
         ArrayList<String> namesDataSet = this.mxGetDataSets();
+        ArrayList<Double> average = new ArrayList<>();
+        ArrayList<String> names = new ArrayList<>();
 
         for (String name : namesDataSet) {
-            ArrayList<ClassifierTest> learners = this.startProcessStream(name, 1000, true);
+            ArrayList<ClassifierTest> learners = this.startProcessStream(name, 1000, save);
 
             System.out.println("DATASET: " + name);
             System.out.printf("%12s%12s%12s%12s%12s%12s%16s\n", "Classifier", "Accuracy", "SD-Accu.", "Kappa M", "kappa T", "Time", "RAM-Hours");
@@ -125,9 +126,31 @@ public class Experiment {
                     learners.get(i).kappat,
                     learners.get(i).time,
                     learners.get(i).ram * Math.pow(10, 9));
+                
+                if (average.size() < learners.size()) {
+                    average.add(learners.get(i).accuracy);
+                    names.add(learners.get(i).name);
+                } else {
+                    average.set(i, average.get(i) + learners.get(i).accuracy);
+                }
             }
         }
-        System.out.close();
+        
+        // Final Rank
+        Integer numbers[] = new Integer[average.size()];
+        for (int i = 0; i < numbers.length; i++) {
+            numbers[i] = i;
+        }
+        Arrays.sort(numbers, (final Integer o1, final Integer o2) -> Double.compare(average.get(o2), average.get(o1)));
+
+        // Print Results
+        System.out.println("\nAVERAGE RESULTS:");
+        System.out.printf("%12s%12s\n", "Classifier", "Accuracy");
+        System.out.println("------------------------");
+
+        for (int i = 0; i < average.size(); i++) {
+            System.out.printf("%12s %11.2f\n", names.get(numbers[i]), (double) average.get(numbers[i]) / namesDataSet.size());
+        }        
     }
 
     private static void prepareFolder()
