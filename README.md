@@ -9,4 +9,4 @@ This code implements in Java a Test of the drift classifiers implemented in MOA.
 * MOA 2016+
 
 ## Authors
-* **Jorge C. Chamby** - *Initial work* - [jchambyd](https://github.com/jchambyd)
+* **Jorge C. Chamby Diaz** - *Initial work* - [jchambyd](https://github.com/jchambyd)
